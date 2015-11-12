@@ -1,0 +1,9 @@
+---
+title: Did the GSA Auctions Experiment change the number of bids offered by previous users of the system?
+author: Jake
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+---
+
+
+The goal of the experiment is to decrease number of unsold items on <http://gsaauctions.gov>.
+
