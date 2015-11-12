@@ -1,0 +1,114 @@
+---
+title: Setup data for analysis of the GSA Auctions experiment
+author: Jake
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+---
+
+
+# Design
+
+For each item posted for auction with no previous bids, an algorithm identifies a population of
+potential bidders (people who had previously used the system who had bid on an
+item of the same type in the past 3 months). Within this group, half are assigned to receive an email informing them that said item's auction is ending soon. The other half receives no email.
+
+# Outcomes
+
+The key outcome for now is whether or not a person makes a bid.
+
+# Pre-processing of files
+
+I don't think that I found any semi-colons all alone in the files that matter to us here:
+
+```{bash}
+cd Data
+egrep  '[^;];[^;]' EMAILQ\ _1101.TXT
+egrep  '[^;];[^;]' BIDS_1101.TXT
+## Notice that this is not true of other files
+## egrep  '[^;];[^;]' WINBID_1101.TXT 
+
+```
+
+So, this means that I can just read them into R with a single ';' as a separator and then delete empty columns. It might eventually be faster to pre-process the files with 'sed' or 'python' or something.
+
+It turns out I was having trouble reading in BIDS_1101.TXT (one of the lines had some seemingly hidden characters that was causing fread to bomb), so I did a little cleanup of that file in the process of diagnosing the problem.
+
+First, replace all ';;;' or ';;;;' with ';' (since I had already verified that we never had a ';' by itself). I discovered one weird case with 4 ';' (TOPRAIL in BIDS_1101.TXT only and some of LOTDESC too but not necessarily TOPRAIL related).
+
+```{bash}
+egrep  '[^;;;;];;;;[^;;;;]' *.TXT # first just check for four in a row
+sed -i.bak1  's/;;;;/;/g' BIDS_1101.TXT
+sed -i.bak2  's/;;;/;/g' BIDS_1101.TXT
+```
+
+Then, remove excess whitespace at end of line (this is just to make the process of looking for the problem easier) and excess dots
+
+```{bash}
+sed -i.bak3 's/ *$//' BIDS_1101.TXT
+sed -i.bak4 's/\.\.\./\./' BIDS_1101.TXT
+```
+
+
+
+# Reading the files into R
+
+```{r}
+## Specific file names need to be changed by hand when the files change unless we automate this some how.
+library(data.table) ## using data.table for speed with large datasets
+emailq<-fread("Data/EMAILQ\ _1101.TXT",sep=";",header=TRUE,colClasses="character")
+## emailq<-emailq[,which(unlist(lapply(emailq, function(x){!all(is.na(x))}))),with=F]
+emailq<-emailq[,which(unlist(lapply(emailq, function(x){!all(x=="")}))),with=F]
+names(emailq)<-make.names(gsub("\\.","",names(emailq))) ## make nicer names
+str(emailq)
+```
+
+
+We can see that the experimental pool varied a lot across the different items including some items for which only one email was eligible for sending. In those cases, the only email eligible was sent except for a case with SENT=="E" (I'm not sure what E means).
+
+```{r}
+
+regSaleLotsTab<-table(emailq[,REG.SALE.LOT..])
+sort(regSaleLotsTab,decreasing=TRUE)[1:10]
+sort(table(emailq[,REG.SALE.LOT..]))[1:10]
+
+## SENT is Control:
+table(emailq[SENT.DTE=="00000000",SENT])
+
+emailq[REG.SALE.LOT.. %in% names(regSaleLotsTab[regSaleLotsTab==1]),list(REG.SALE.LOT..,SENT)]
+
+```
+
+There is a BID column in 'emailq' but I don't know what it is.
+
+In the BIDS dataset, we have a column for REG, for SALE.NUMBER and LOT. We want a `r unique(nchar(emailq[,REG.SALE.LOT..]))` character code from the bids data so that we can combine information about the people making bids and the bids themselves (whether or not a control or treatment assigned email address bid on an item).
+
+```{r}
+bids<-fread("Data/BIDS_1101.TXT",sep=";",header=TRUE,colClasses="character")
+names(bids)<-make.names(gsub("\\.","",names(bids))) ## make nicer names
+str(bids)
+
+## Testing on a small piece of the dataset
+set.seed(12345)
+blah<-bids[sample(1:nrow(bids),10),]
+blah[,RegSaleLot:=paste(REG,SALE.NUMBER,LOT,sep=""),by=1:nrow(blah)]
+stopifnot(unique(nchar(blah[,RegSaleLot]))==15)
+
+bids[,RegSaleLot:=paste(REG,SALE.NUMBER,LOT,sep=""),by=1:nrow(bids)]
+stopifnot(unique(nchar(bids[,RegSaleLot]))==15)
+
+
+```
+REG SALE LOT is the item. (three vars)
+
+In BIDS we have REG, SALE NUMBER and LOT (minus the leading 0s on LOT). (Within Person) [If in the BIDs then they submitted a big]
+
+Is there a user id from the EMAILQ file that exists in the BIDs file showing that we have BID.
+
+
+colsep = ";;;"
+
+```{r}
+library(data.table)
+users<-read.table
+
+```
+
