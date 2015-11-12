@@ -7,3 +7,14 @@ date: '`r format(Sys.Date(), "%B %d, %Y")`'
 
 The goal of the experiment is to decrease number of unsold items on <http://gsaauctions.gov>.
 
+```{r}
+library(data.table)
+load("Data/wrkdat.rda")
+```
+
+How many bids were there in the `r nrow(wrkdat)` emails?
+
+```{r}
+sum(!is.na(wrkdat$BID.AMT))
+```
+

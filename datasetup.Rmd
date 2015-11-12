@@ -54,32 +54,37 @@ sed -i.bak4 's/\.\.\./\./' BIDS_1101.TXT
 ```{r}
 ## Specific file names need to be changed by hand when the files change unless we automate this some how.
 library(data.table) ## using data.table for speed with large datasets
+
 emailq<-fread("Data/EMAILQ\ _1101.TXT",sep=";",header=TRUE,colClasses="character")
 ## emailq<-emailq[,which(unlist(lapply(emailq, function(x){!all(is.na(x))}))),with=F]
 emailq<-emailq[,which(unlist(lapply(emailq, function(x){!all(x=="")}))),with=F]
 names(emailq)<-make.names(gsub("\\.","",names(emailq))) ## make nicer names
+setnames(emailq,"RegSaleLot","RegSaleLot")
 str(emailq)
 ```
 
 
-We can see that the experimental pool varied a lot across the different items including some items for which only one email was eligible for sending. In those cases, the only email eligible was sent except for a case with SENT=="E" (I'm not sure what E means).
+We can see that the experimental pool varied a lot across the different items including some items for which only one email was eligible for sending. In those cases, the only email eligible was sent except for a case with SENT=="E" (I'm not sure what E means). So, we will have to remove these rows from consideration since there is no comparison group.
 
 ```{r}
 
-regSaleLotsTab<-table(emailq[,REG.SALE.LOT..])
+regSaleLotsTab<-table(emailq[,RegSaleLot])
 sort(regSaleLotsTab,decreasing=TRUE)[1:10]
-sort(table(emailq[,REG.SALE.LOT..]))[1:10]
+sort(table(emailq[,RegSaleLot]))[1:10]
 
 ## SENT is Control:
 table(emailq[SENT.DTE=="00000000",SENT])
 
-emailq[REG.SALE.LOT.. %in% names(regSaleLotsTab[regSaleLotsTab==1]),list(REG.SALE.LOT..,SENT)]
+emailq[RegSaleLot %in% names(regSaleLotsTab[regSaleLotsTab==1]),list(RegSaleLot,SENT)]
+
+emailq <- emailq[!(RegSaleLot %in% names(regSaleLotsTab[regSaleLotsTab==1])),]
+stopifnot(any(table(emailq[,RegSaleLot])!=1))
 
 ```
 
 There is a BID column in 'emailq' but I don't know what it is.
 
-In the BIDS dataset, we have a column for REG, for SALE.NUMBER and LOT. We want a `r unique(nchar(emailq[,REG.SALE.LOT..]))` character code from the bids data so that we can combine information about the people making bids and the bids themselves (whether or not a control or treatment assigned email address bid on an item).
+In the BIDS dataset, we have a column for REG, for SALE.NUMBER and LOT. We want a `r unique(nchar(emailq[,RegSaleLot]))` character code from the bids data so that we can combine information about the people making bids and the bids themselves (whether or not a control or treatment assigned email address bid on an item).
 
 ```{r}
 bids<-fread("Data/BIDS_1101.TXT",sep=";",header=TRUE,colClasses="character")
@@ -95,20 +100,24 @@ stopifnot(unique(nchar(blah[,RegSaleLot]))==15)
 bids[,RegSaleLot:=paste(REG,SALE.NUMBER,LOT,sep=""),by=1:nrow(bids)]
 stopifnot(unique(nchar(bids[,RegSaleLot]))==15)
 
-
 ```
-REG SALE LOT is the item. (three vars)
 
-In BIDS we have REG, SALE NUMBER and LOT (minus the leading 0s on LOT). (Within Person) [If in the BIDs then they submitted a big]
-
-Is there a user id from the EMAILQ file that exists in the BIDs file showing that we have BID.
-
-
-colsep = ";;;"
+Is there a user id from the email file that exists in the bids file showing that we have bid for a given sale?
 
 ```{r}
-library(data.table)
-users<-read.table
 
+setkey(bids,RegSaleLot,USER.ID)
+setkey(emailq,RegSaleLot,USER.ID)
+
+wrkdat<-merge(emailq,bids) ##,all.x=TRUE,all.y=FALSE)
+
+## maybe just do something like the above== assign 1 if name is in both places otherwise 0 for existence of a bid.
+
+write.csv(wrkdat,file="Data/wrkdat.csv")
+save(wrkdat,file="wrkdat.rda") 
 ```
+
+
+
+
 
