@@ -32,7 +32,7 @@ So, this means that I can just read them into R with a single ';' as a separator
 
 It turns out I was having trouble reading in BIDS_1101.TXT (one of the lines had some seemingly hidden characters that was causing fread to bomb), so I did a little cleanup of that file in the process of diagnosing the problem.
 
-First, replace all ';;;' or ';;;;' with ';' (since I had already verified that we never had a ';' by itself). I discovered one weird case with 4 ';' (TOPRAIL in BIDS_1101.TXT only and some of LOTDESC too but not necessarily TOPRAIL related).
+First, replace all ';;;' or ';;;;' with ';' (since I had already verified that we never had a ';' by itself). I discovered one weird case with 4 ';' 
 
 ```{bash}
 egrep  '[^;;;;];;;;[^;;;;]' *.TXT # first just check for four in a row
