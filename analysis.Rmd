@@ -4,17 +4,31 @@ author: Jake
 date: '`r format(Sys.Date(), "%B %d, %Y")`'
 ---
 
+This file requires `mergedat.rda` created by `datasetup.Rmd`.
 
 The goal of the experiment is to decrease number of unsold items on <http://gsaauctions.gov>.
 
 ```{r}
 library(data.table)
-load("Data/wrkdat.rda")
+load("Data/mergedat.rda")
 ```
 
-How many bids were there in the `r nrow(wrkdat)` emails?
+How many bids were there in the `r nrow(wrkdat)` emails? (About `r sum(mergedat$anybid)`.)
 
 ```{r}
-sum(!is.na(wrkdat$BID.AMT))
+mergedat[,anybid:=!is.na(meanbidamt)]
+table(mergedat$anybid,exclude=c())
 ```
+
+Since the experiment ran within Sale, we should look within Sale for treated versus control differences. (Recalling that there is still the issue of the same person paricipating in multiple sales. So, here, just looking at each Sale as a mini-experiment alone rather than thinking about dependencies across them.) (This is to be done. 
+
+```{r}
+mergedat[,trt:=SENT=="Y"]
+mergedat[SENT=="E",trt:=NA]
+with(mergedat,table(SENT,trt,exclude=c()))
+## this next is definitely NOT data.table style work, but the data is not too big right now.
+##mp<-split(mergedat[,c("meanbidamt","trt")],mergedat$RegSaleLot)
+
+```
+
 
