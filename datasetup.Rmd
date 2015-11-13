@@ -1,9 +1,38 @@
 ---
-title: Setup data for analysis of the GSA Auctions experiment
+title: Setup data for analysis of the GSA Auctions experiment^[`r paste("<",system('grep -n github .git/config | cut -d "=" -f 2',intern=TRUE),">",sep="")`]
 author: Jake
 date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  html_document:
+    highlight: pygments
+    keep_md: true
 ---
 
+```{r include=FALSE, cache=FALSE}
+# Some customization.  You can alter or delete as desired (if you know what you are doing).
+# knitr settings to control how R chunks work.
+
+## To make the html file do
+## render("datasetup.Rmd",output_format=html_document(fig_retina=FALSE))
+## To make the pdf file do
+## render("datasetup.Rmd",output_format=pdf_document())
+
+require(knitr)
+opts_chunk$set(
+  tidy=FALSE,     # display code as typed
+  size="small",    # slightly smaller font for code
+  echo=TRUE,
+  results='markup',
+  strip.white=TRUE,
+  fig.path='figs/fig',
+  cache=FALSE,
+  highlight=TRUE,
+  width.cutoff=132,
+  size='footnotesize',
+  out.width='.9\\textwidth',
+  message=FALSE,
+  comment=NA)
+```
 
 # Design
 
@@ -17,15 +46,15 @@ The key outcome for now is whether or not a person makes a bid.
 
 # Pre-processing of files
 
-I don't think that I found any semi-colons all alone in the files that matter to us here:
+I don't think that I found any semi-colons all alone in the files that matter
+to us here.^[These next bits of bash script are not run here because they only need
+to be run once per set of files. Probably these lines belong in a
+pre-processing file, maybe just a bash script.]
 
-```{bash}
+```{r eval=FALSE, engine='bash'}
 cd Data
 egrep  '[^;];[^;]' EMAILQ\ _1101.TXT
 egrep  '[^;];[^;]' BIDS_1101.TXT
-## Notice that this is not true of other files
-## egrep  '[^;];[^;]' WINBID_1101.TXT 
-
 ```
 
 So, this means that I can just read them into R with a single ';' as a separator and then delete empty columns. It might eventually be faster to pre-process the files with 'sed' or 'python' or something.
@@ -34,7 +63,7 @@ It turns out I was having trouble reading in BIDS_1101.TXT (one of the lines had
 
 First, replace all ';;;' or ';;;;' with ';' (since I had already verified that we never had a ';' by itself). I discovered one weird case with 4 ';' 
 
-```{bash}
+```{r eval=FALSE, engine='bash'}
 egrep  '[^;;;;];;;;[^;;;;]' *.TXT # first just check for four in a row
 sed -i.bak1  's/;;;;/;/g' BIDS_1101.TXT
 sed -i.bak2  's/;;;/;/g' BIDS_1101.TXT
@@ -42,7 +71,7 @@ sed -i.bak2  's/;;;/;/g' BIDS_1101.TXT
 
 Then, remove excess whitespace at end of line (this is just to make the process of looking for the problem easier) and excess dots
 
-```{bash}
+```{r eval=FALSE,engine='bash'}
 sed -i.bak3 's/ *$//' BIDS_1101.TXT
 sed -i.bak4 's/\.\.\./\./' BIDS_1101.TXT
 ```
@@ -53,13 +82,13 @@ sed -i.bak4 's/\.\.\./\./' BIDS_1101.TXT
 
 ```{r}
 ## Specific file names need to be changed by hand when the files change unless we automate this some how.
-library(data.table) ## using data.table for speed with large datasets
+library(data.table,quietly=TRUE) ## using data.table for speed with large datasets
 
 emailq<-fread("Data/EMAILQ\ _1101.TXT",sep=";",header=TRUE,colClasses="character")
 ## emailq<-emailq[,which(unlist(lapply(emailq, function(x){!all(is.na(x))}))),with=F]
 emailq<-emailq[,which(unlist(lapply(emailq, function(x){!all(x=="")}))),with=F]
-names(emailq)<-make.names(gsub("\\.","",names(emailq))) ## make nicer names
-setnames(emailq,"RegSaleLot","RegSaleLot")
+setnames(emailq,names(emailq),make.names(gsub("\\.","",names(emailq)))) ## make nicer names
+setnames(emailq,"REG.SALE.LOT..","RegSaleLot")
 str(emailq)
 ```
 
@@ -82,13 +111,22 @@ stopifnot(any(table(emailq[,RegSaleLot])!=1))
 
 ```
 
+Notice that the same person can be in the experiment multiple times (either as
+treatment or control). This means that the causal estimand will be a bit
+difficult to define and also that statistical inference will not be
+straightforward.
+
+```{r}
+table(table(emailq$USER.ID))
+```
+
 There is a BID column in 'emailq' but I don't know what it is.
 
 In the BIDS dataset, we have a column for REG, for SALE.NUMBER and LOT. We want a `r unique(nchar(emailq[,RegSaleLot]))` character code from the bids data so that we can combine information about the people making bids and the bids themselves (whether or not a control or treatment assigned email address bid on an item).
 
 ```{r}
 bids<-fread("Data/BIDS_1101.TXT",sep=";",header=TRUE,colClasses="character")
-names(bids)<-make.names(gsub("\\.","",names(bids))) ## make nicer names
+setnames(bids,names(bids),make.names(gsub("\\.","",names(bids)))) ## make nicer names
 str(bids)
 
 ## Testing on a small piece of the dataset
@@ -104,17 +142,43 @@ stopifnot(unique(nchar(bids[,RegSaleLot]))==15)
 
 Is there a user id from the email file that exists in the bids file showing that we have bid for a given sale?
 
+First, make a unique id for user and sale:
+
 ```{r}
 
-setkey(bids,RegSaleLot,USER.ID)
-setkey(emailq,RegSaleLot,USER.ID)
+bids[,ID:=paste(RegSaleLot,USER.ID,sep=""),by=1:nrow(bids)]
+emailq[,ID:=paste(RegSaleLot,USER.ID,sep=""),by=1:nrow(emailq)]
+stopifnot(all(table(emailq$ID)==1)) ## good, uniquely identifies rows of emailq
+```
 
-wrkdat<-merge(emailq,bids) ##,all.x=TRUE,all.y=FALSE)
+Then collapse bid to the sale/user level (sometimes people gave many bids for the same sale):
 
-## maybe just do something like the above== assign 1 if name is in both places otherwise 0 for existence of a bid.
+```{r}
+bids[,bidamt:=as.numeric(BID.AMT)]
+bidsItemUser<-bids[,mean(bidamt),by=ID]
+setnames(bidsItemUser,"V1","meanbidamt")
+stopifnot(all(table(bidsItemUser$ID)==1))
+```
 
-write.csv(wrkdat,file="Data/wrkdat.csv")
-save(wrkdat,file="wrkdat.rda") 
+Then add the mean bid amt to the data recording whether an email was sent:
+
+```{r}
+setkey(bidsItemUser,ID)
+setkey(emailq,ID)
+
+## Merge keeping the rows of emailq
+mergedat<-bidsItemUser[emailq]
+stopifnot(all(table(mergedat$ID)==1))
+str(mergedat)
+summary(mergedat$meanbidamt)
+table(!is.na(mergedat$meanbidamt),mergedat$SENT,exclude=c())
+```
+
+Save the data for analysis:
+
+```{r}
+write.csv(mergedat,file="Data/mergedat.csv")
+save(mergedat,file="Data/mergedat.rda")
 ```
 
 
